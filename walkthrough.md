@@ -2923,3 +2923,768 @@ Putting it all together, here's what happens when a user interacts with the appl
 5. If refresh fails → `logOut()` → redirect to login
 
 This architecture achieves a clean separation of concerns: the router handles navigation and auth gating, stores manage state, the HTTP layer handles token lifecycle, and the layout system provides the visual shell — all connected through a well-defined flow.
+
+---
+
+## 17. Deep Dive: Theme System Implementation
+
+The theme system operates across **three independent dimensions** that work together:
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Dimension 1: Sidebar/Nav Color Scheme (8 themes)   │
+│    ← html[data-theme="xxx"] CSS custom properties   │
+├─────────────────────────────────────────────────────┤
+│  Dimension 2: Element Plus Primary Color            │
+│    ← --el-color-primary + 11 shade variants         │
+├─────────────────────────────────────────────────────┤
+│  Dimension 3: Light / Dark Mode                     │
+│    ← html.dark class + Tailwind dark variant        │
+└─────────────────────────────────────────────────────┘
+```
+
+### 17a. Sidebar Color Schemes — `data-theme` Attribute Selectors
+
+The file `src/style/theme.scss` defines 8 complete color palettes, each activated by an `html[data-theme="xxx"]` attribute selector. Each palette sets 8 CSS custom properties that control the sidebar's appearance:
+
+```bash
+cat -n src/style/theme.scss
+```
+
+```output
+     1	/* 亮白色 */
+     2	html[data-theme="light"] {
+     3	  --pure-theme-sub-menu-active-text: #000000d9;
+     4	  --pure-theme-menu-bg: #fff;
+     5	  --pure-theme-menu-hover: #f6f6f6;
+     6	  --pure-theme-sub-menu-bg: #fff;
+     7	  --pure-theme-menu-text: rgb(0 0 0 / 60%);
+     8	  --pure-theme-sidebar-logo: #fff;
+     9	  --pure-theme-menu-title-hover: #000;
+    10	  --pure-theme-menu-active-before: #4091f7;
+    11	}
+    12	
+    13	/* 道奇蓝 */
+    14	html[data-theme="default"] {
+    15	  --pure-theme-sub-menu-active-text: #fff;
+    16	  --pure-theme-menu-bg: #001529;
+    17	  --pure-theme-menu-hover: rgb(64 145 247 / 15%);
+    18	  --pure-theme-sub-menu-bg: #0f0303;
+    19	  --pure-theme-menu-text: rgb(254 254 254 / 65%);
+    20	  --pure-theme-sidebar-logo: #002140;
+    21	  --pure-theme-menu-title-hover: #fff;
+    22	  --pure-theme-menu-active-before: #4091f7;
+    23	}
+    24	
+    25	/* 深紫罗兰色 */
+    26	html[data-theme="saucePurple"] {
+    27	  --pure-theme-sub-menu-active-text: #fff;
+    28	  --pure-theme-menu-bg: #130824;
+    29	  --pure-theme-menu-hover: rgb(105 58 201 / 15%);
+    30	  --pure-theme-sub-menu-bg: #000;
+    31	  --pure-theme-menu-text: #7a80b4;
+    32	  --pure-theme-sidebar-logo: #1f0c38;
+    33	  --pure-theme-menu-title-hover: #fff;
+    34	  --pure-theme-menu-active-before: #693ac9;
+    35	}
+    36	
+    37	/* 深粉色 */
+    38	html[data-theme="pink"] {
+    39	  --pure-theme-sub-menu-active-text: #fff;
+    40	  --pure-theme-menu-bg: #28081a;
+    41	  --pure-theme-menu-hover: rgb(216 68 147 / 15%);
+    42	  --pure-theme-sub-menu-bg: #000;
+    43	  --pure-theme-menu-text: #7a80b4;
+    44	  --pure-theme-sidebar-logo: #3f0d29;
+    45	  --pure-theme-menu-title-hover: #fff;
+    46	  --pure-theme-menu-active-before: #d84493;
+    47	}
+    48	
+    49	/* 猩红色 */
+    50	html[data-theme="dusk"] {
+    51	  --pure-theme-sub-menu-active-text: #fff;
+    52	  --pure-theme-menu-bg: #2a0608;
+    53	  --pure-theme-menu-hover: rgb(225 60 57 / 15%);
+    54	  --pure-theme-sub-menu-bg: #000;
+    55	  --pure-theme-menu-text: rgb(254 254 254 / 65.1%);
+    56	  --pure-theme-sidebar-logo: #42090c;
+    57	  --pure-theme-menu-title-hover: #fff;
+    58	  --pure-theme-menu-active-before: #e13c39;
+    59	}
+    60	
+    61	/* 橙红色 */
+    62	html[data-theme="volcano"] {
+    63	  --pure-theme-sub-menu-active-text: #fff;
+    64	  --pure-theme-menu-bg: #2b0e05;
+    65	  --pure-theme-menu-hover: rgb(232 95 51 / 15%);
+    66	  --pure-theme-sub-menu-bg: #0f0603;
+    67	  --pure-theme-menu-text: rgb(254 254 254 / 65%);
+    68	  --pure-theme-sidebar-logo: #441708;
+    69	  --pure-theme-menu-title-hover: #fff;
+    70	  --pure-theme-menu-active-before: #e85f33;
+    71	}
+    72	
+    73	/* 绿宝石 */
+    74	html[data-theme="mingQing"] {
+    75	  --pure-theme-sub-menu-active-text: #fff;
+    76	  --pure-theme-menu-bg: #032121;
+    77	  --pure-theme-menu-hover: rgb(89 191 193 / 15%);
+    78	  --pure-theme-sub-menu-bg: #000;
+    79	  --pure-theme-menu-text: #7a80b4;
+    80	  --pure-theme-sidebar-logo: #053434;
+    81	  --pure-theme-menu-title-hover: #fff;
+    82	  --pure-theme-menu-active-before: #59bfc1;
+    83	}
+    84	
+    85	/* 酸橙绿 */
+    86	html[data-theme="auroraGreen"] {
+    87	  --pure-theme-sub-menu-active-text: #fff;
+    88	  --pure-theme-menu-bg: #0b1e15;
+    89	  --pure-theme-menu-hover: rgb(96 172 128 / 15%);
+    90	  --pure-theme-sub-menu-bg: #000;
+    91	  --pure-theme-menu-text: #7a80b4;
+    92	  --pure-theme-sidebar-logo: #112f21;
+    93	  --pure-theme-menu-title-hover: #fff;
+    94	  --pure-theme-menu-active-before: #60ac80;
+    95	}
+```
+
+Each theme defines 8 CSS variables:
+
+| Variable | Purpose |
+|----------|---------|
+| `--pure-theme-menu-bg` | Sidebar background color |
+| `--pure-theme-menu-text` | Menu item text color |
+| `--pure-theme-menu-hover` | Menu item hover background |
+| `--pure-theme-menu-title-hover` | Menu item hover text color |
+| `--pure-theme-sub-menu-bg` | Submenu dropdown background |
+| `--pure-theme-sub-menu-active-text` | Active menu item text color |
+| `--pure-theme-sidebar-logo` | Logo area background |
+| `--pure-theme-menu-active-before` | Active indicator bar color |
+
+These variables are consumed in `src/style/sidebar.scss`. Let's see how the sidebar applies them:
+
+```bash
+sed -n "87,98p" src/style/sidebar.scss
+```
+
+```output
+  .sidebar-container {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 1001;
+    width: $sideBarWidth !important;
+    height: 100%;
+    overflow: visible;
+    font-size: 0;
+    background: var(--pure-theme-menu-bg) !important;
+    border-right: 1px solid var(--pure-border-color);
+```
+
+```bash
+sed -n "150,165p" src/style/sidebar.scss
+```
+
+```output
+    .el-menu-item,
+    .el-sub-menu__title {
+      height: 50px;
+      color: var(--pure-theme-menu-text);
+      background-color: transparent !important;
+
+      &:hover {
+        color: var(--pure-theme-menu-title-hover) !important;
+      }
+
+      div,
+      span {
+        height: 50px;
+        line-height: 50px;
+      }
+    }
+```
+
+```bash
+sed -n "174,197p" src/style/sidebar.scss
+```
+
+```output
+    .is-active > .el-sub-menu__title,
+    .is-active.submenu-title-noDropdown {
+      color: var(--pure-theme-sub-menu-active-text) !important;
+    }
+
+    .is-active {
+      color: var(--pure-theme-sub-menu-active-text) !important;
+      transition: color 0.3s;
+    }
+
+    .el-menu-item.is-active.nest-menu > * {
+      z-index: 1;
+      color: #fff;
+    }
+
+    .el-menu-item.is-active.nest-menu::before {
+      position: absolute;
+      inset: 0 8px;
+      clear: both;
+      margin: 4px 0;
+      content: "";
+      background: var(--el-color-primary) !important;
+      border-radius: 3px;
+    }
+```
+
+The sidebar SCSS shows the CSS variables in action:
+- `.sidebar-container` uses `var(--pure-theme-menu-bg)` for its background
+- `.el-menu-item` uses `var(--pure-theme-menu-text)` for text and `var(--pure-theme-menu-title-hover)` on hover
+- `.is-active` uses `var(--pure-theme-sub-menu-active-text)` for the highlighted state
+- Nested active items use a `::before` pseudo-element filled with `var(--el-color-primary)` as a rounded highlight bar
+
+The sidebar SCSS also handles all three layout modes via `body[layout]` attribute selectors, each with different sidebar widths:
+
+```bash
+grep -n "body\[layout=" src/style/sidebar.scss
+```
+
+```output
+569:body[layout="vertical"] {
+646:body[layout="horizontal"] {
+665:body[layout="mix"] {
+```
+
+```bash
+sed -n "569,572p" src/style/sidebar.scss && echo "..." && sed -n "646,649p" src/style/sidebar.scss && echo "..." && sed -n "665,668p" src/style/sidebar.scss
+```
+
+```output
+body[layout="vertical"] {
+  $sideBarWidth: 210px;
+
+  @include merge-style($sideBarWidth);
+...
+body[layout="horizontal"] {
+  $sideBarWidth: 0;
+
+  @include merge-style($sideBarWidth);
+...
+body[layout="mix"] {
+  $sideBarWidth: 210px;
+
+  @include merge-style($sideBarWidth);
+```
+
+Each layout mode uses a SCSS mixin `merge-style($sideBarWidth)` with a different sidebar width:
+- **vertical**: 210px sidebar (classic left sidebar)
+- **horizontal**: 0px sidebar (menu moves to top navbar)
+- **mix**: 210px sidebar (top navbar + left sidebar combined)
+
+The mixin generates all the responsive `main-container` margin, `fixed-header` width, and collapse transitions parametrized on that width.
+
+### 17b. Element Plus Primary Color — Runtime CSS Variable Shade Generation
+
+When a sidebar theme is selected, the composable also updates Element Plus's primary color and generates 11 shade variants at runtime. Here's the core logic:
+
+```bash
+sed -n "73,90p" src/layout/hooks/useDataThemeChange.ts
+```
+
+```output
+  function setPropertyPrimary(mode: string, i: number, color: string) {
+    document.documentElement.style.setProperty(
+      `--el-color-primary-${mode}-${i}`,
+      dataTheme.value ? darken(color, i / 10) : lighten(color, i / 10)
+    );
+  }
+
+  /** 设置 `element-plus` 主题色 */
+  const setEpThemeColor = (color: string) => {
+    useEpThemeStoreHook().setEpThemeColor(color);
+    document.documentElement.style.setProperty("--el-color-primary", color);
+    for (let i = 1; i <= 2; i++) {
+      setPropertyPrimary("dark", i, color);
+    }
+    for (let i = 1; i <= 9; i++) {
+      setPropertyPrimary("light", i, color);
+    }
+  };
+```
+
+`setEpThemeColor(color)` does:
+1. Persists the color to the epTheme Pinia store (which also writes to localStorage)
+2. Sets `--el-color-primary` on `<html>` — this is Element Plus's main accent color used by buttons, links, switches, etc.
+3. Generates **2 dark shades** (`--el-color-primary-dark-1`, `dark-2`) — used for hover/active states
+4. Generates **9 light shades** (`--el-color-primary-light-1` through `light-9`) — used for backgrounds, borders, disabled states
+
+The critical detail: in dark mode (`dataTheme.value === true`), the "light" shades use `darken()` instead of `lighten()`. This inverts the shade direction so Element Plus components look correct against a dark background — lighter shades in light mode become darker shades in dark mode.
+
+The epTheme store that persists this color:
+
+```bash
+cat -n src/store/modules/epTheme.ts
+```
+
+```output
+     1	import { defineStore } from "pinia";
+     2	import {
+     3	  store,
+     4	  getConfig,
+     5	  storageLocal,
+     6	  responsiveStorageNameSpace
+     7	} from "../utils";
+     8	
+     9	export const useEpThemeStore = defineStore("pure-epTheme", {
+    10	  state: () => ({
+    11	    epThemeColor:
+    12	      storageLocal().getItem<StorageConfigs>(
+    13	        `${responsiveStorageNameSpace()}layout`
+    14	      )?.epThemeColor ?? getConfig().EpThemeColor,
+    15	    epTheme:
+    16	      storageLocal().getItem<StorageConfigs>(
+    17	        `${responsiveStorageNameSpace()}layout`
+    18	      )?.theme ?? getConfig().Theme
+    19	  }),
+    20	  getters: {
+    21	    getEpThemeColor(state) {
+    22	      return state.epThemeColor;
+    23	    },
+    24	    /** 用于mix菜单布局下hamburger-svg的fill属性 */
+    25	    fill(state) {
+    26	      if (state.epTheme === "light") {
+    27	        return "#409eff";
+    28	      } else {
+    29	        return "#fff";
+    30	      }
+    31	    }
+    32	  },
+    33	  actions: {
+    34	    setEpThemeColor(newColor: string): void {
+    35	      const layout = storageLocal().getItem<StorageConfigs>(
+    36	        `${responsiveStorageNameSpace()}layout`
+    37	      );
+    38	      this.epTheme = layout?.theme;
+    39	      this.epThemeColor = newColor;
+    40	      if (!layout) return;
+    41	      layout.epThemeColor = newColor;
+    42	      storageLocal().setItem(`${responsiveStorageNameSpace()}layout`, layout);
+    43	    }
+    44	  }
+    45	});
+    46	
+    47	export function useEpThemeStoreHook() {
+    48	  return useEpThemeStore(store);
+    49	}
+```
+
+The store has two pieces of state:
+- `epThemeColor`: the hex color string (e.g., `"#409EFF"`)
+- `epTheme`: the current sidebar theme name (e.g., `"light"`, `"default"`)
+
+Both are hydrated from localStorage on store creation, falling back to `platform-config.json` defaults. The `fill` getter is a clever shortcut — it returns white for dark themes and blue for the light theme, used to color the hamburger menu icon.
+
+### 17c. Dark/Light Mode — The `html.dark` Class
+
+The dark mode toggle is controlled by `dataThemeChange()` in the composable:
+
+```bash
+sed -n "92,109p" src/layout/hooks/useDataThemeChange.ts
+```
+
+```output
+  /** 浅色、深色主题模式切换 */
+  function dataThemeChange(mode?: string) {
+    themeMode.value = mode;
+    if (useEpThemeStoreHook().epTheme === "light" && dataTheme.value) {
+      setLayoutThemeColor("default", false);
+    } else {
+      setLayoutThemeColor(useEpThemeStoreHook().epTheme, false);
+    }
+
+    if (dataTheme.value) {
+      document.documentElement.classList.add("dark");
+    } else {
+      if ($storage.layout.themeColor === "light") {
+        setLayoutThemeColor("light", false);
+      }
+      document.documentElement.classList.remove("dark");
+    }
+  }
+```
+
+This function orchestrates two things:
+
+**1. Sidebar theme auto-adjustment:**
+- If the sidebar is currently `"light"` (white) and the user switches to dark mode → auto-switch sidebar to `"default"` (dark blue), because a white sidebar looks wrong against a dark background
+- The `isClick=false` parameter preserves the user's original `themeColor` in storage, so switching back to light mode restores the white sidebar
+
+**2. The `dark` class:**
+- Adds/removes `dark` from `document.documentElement` (the `<html>` tag)
+
+This class is consumed in three places:
+
+**Place 1 — Element Plus built-in dark variables:**
+
+```bash
+sed -n "1,2p" src/style/dark.scss
+```
+
+```output
+@use "sass:color";
+@use "element-plus/theme-chalk/src/dark/css-vars.scss" as *;
+```
+
+This single import pulls in Element Plus's official dark mode CSS variables, which activate under `html.dark` and restyle all EP components (buttons, inputs, tables, dialogs, etc.) for dark backgrounds.
+
+**Place 2 — Custom dark overrides** in the same `dark.scss` file:
+
+```bash
+sed -n "4,98p" src/style/dark.scss
+```
+
+```output
+/* 整体暗色风格适配 */
+html.dark {
+  $border-style: #303030;
+  $color-white: #fff;
+
+  /* 自定义深色背景颜色 */
+  // --el-bg-color: #020409;
+
+  /* 常用border-color 需要时可取用 */
+  --pure-border-color: rgb(253 253 253 / 12%);
+
+  /* switch关闭状态下的color 需要时可取用 */
+  --pure-switch-off-color: #ffffff3f;
+
+  /* vxe-table */
+  --vxe-form-background-color: #151515;
+  --vxe-toolbar-background-color: #151515;
+  --vxe-pager-background-color: #151515;
+  --vxe-button-default-background-color: color.adjust(#151515, $lightness: 15%);
+  --vxe-table-header-background-color: color.adjust(#151515, $lightness: 5%);
+  --vxe-font-color: color.adjust(#c9d1d9, $lightness: -12%);
+  --vxe-table-header-font-color: #c9d1d9;
+  --vxe-table-footer-font-color: #c9d1d9;
+  --vxe-table-body-background-color: #151515;
+  --vxe-table-footer-background-color: #151515;
+  --vxe-table-row-striped-background-color: #1e1e1e;
+  --vxe-table-border-color: #303030;
+  --vxe-table-row-hover-background-color: #1e1e1e;
+  --vxe-table-row-hover-striped-background-color: color.adjust(
+    #1e1e1e,
+    $lightness: -10%
+  );
+  --vxe-table-row-current-background-color: fade(#1e1e1e, 20%);
+  --vxe-table-row-hover-current-background-color: fade(#1e1e1e, 20%);
+  --vxe-table-column-hover-background-color: fade(#1e1e1e, 20%);
+  --vxe-table-column-current-background-color: fade(#1e1e1e, 20%);
+  --vxe-table-row-checkbox-checked-background-color: fade(#1e1e1e, 15%);
+  --vxe-table-row-hover-checkbox-checked-background-color: fade(#1e1e1e, 20%);
+  --vxe-table-menu-background-color: color.adjust(#303133, $lightness: 10%);
+  --vxe-table-filter-panel-background-color: color.adjust(
+    #151515,
+    $lightness: 5%
+  );
+  --vxe-grid-maximize-background-color: #151515;
+  --vxe-pager-perfect-background-color: #151515;
+  --vxe-pager-perfect-button-background-color: color.adjust(
+    #151515,
+    $lightness: 15%
+  );
+  --vxe-input-background-color: #151515;
+  --vxe-input-border-color: #303030;
+  --vxe-select-panel-background-color: #151515;
+  --vxe-table-popup-border-color: #303030;
+  --vxe-select-option-hover-background-color: color.adjust(
+    #1e1e1e,
+    $lightness: 15%
+  );
+  --vxe-pulldown-panel-background-color: #151515;
+  --vxe-table-fixed-left-scrolling-box-shadow: 8px 0px 10px -5px #43464c;
+  --vxe-table-fixed-right-scrolling-box-shadow: -8px 0px 10px -5px #43464c;
+  --vxe-loading-background-color: rgb(0 0 0 / 50%);
+  --vxe-tooltip-dark-background-color: color.adjust(#303133, $lightness: 25%);
+  --vxe-modal-header-background-color: #1e1e1e;
+  --vxe-modal-body-background-color: #303133;
+  --vxe-modal-border-color: #303030;
+  --vxe-toolbar-panel-background-color: #151515;
+  --vxe-input-disabled-color: color.adjust(#1e1e1e, $lightness: 20%);
+  --vxe-input-disabled-background-color: color.adjust(#1e1e1e, $lightness: 25%);
+  --vxe-checkbox-icon-background-color: color.adjust(#1e1e1e, $lightness: 15%);
+  --vxe-checkbox-checked-icon-border-color: #303030;
+  --vxe-checkbox-indeterminate-icon-background-color: color.adjust(
+    #1e1e1e,
+    $lightness: 15%
+  );
+
+  .navbar,
+  .tags-view,
+  .contextmenu,
+  .sidebar-container,
+  .horizontal-header,
+  .sidebar-logo-container,
+  .horizontal-header .el-sub-menu__title,
+  .horizontal-header .submenu-title-noDropdown {
+    background: var(--el-bg-color) !important;
+  }
+
+  .app-main,
+  .app-main-nofixed-header {
+    background: #020409 !important;
+  }
+
+  .logic-flow-view,
+  .wangeditor {
+    filter: invert(0.9) hue-rotate(180deg);
+  }
+```
+
+The custom dark overrides do several things:
+- Override `--pure-border-color` to a subtle light-on-dark border
+- Set 50+ VxeTable CSS variables for dark backgrounds (`#151515` base), borders (`#303030`), hover states, etc. This is necessary because VxeTable is a third-party table library that doesn't share Element Plus's theming system.
+- Force the sidebar, navbar, tags bar, and logo container to use `var(--el-bg-color)` (Element Plus's dark background)
+- Set the main content area to an even darker `#020409`
+- Apply a CSS `filter: invert(0.9) hue-rotate(180deg)` to LogicFlow and WangEditor — a clever hack that visually inverts third-party components that don't natively support dark mode
+
+**Place 3 — Tailwind CSS dark variant:**
+
+```bash
+cat -n src/style/tailwind.css
+```
+
+```output
+     1	@layer theme, base, components, utilities;
+     2	@import "tailwindcss/theme.css" layer(theme);
+     3	@import "tailwindcss/utilities.css" layer(utilities);
+     4	
+     5	@custom-variant dark (&:is(.dark *));
+     6	
+     7	@theme {
+     8	  --color-bg_color: var(--el-bg-color);
+     9	  --color-primary: var(--el-color-primary);
+    10	  --color-text_color_primary: var(--el-text-color-primary);
+    11	  --color-text_color_regular: var(--el-text-color-regular);
+    12	}
+    13	
+    14	/*
+    15	  The default border color has changed to `currentColor` in Tailwind CSS v4,
+    16	  so we've added these compatibility styles to make sure everything still
+    17	  looks the same as it did with Tailwind CSS v3.
+    18	
+    19	  If we ever want to remove these styles, we need to add an explicit border
+    20	  color utility to any element that depends on these defaults.
+    21	*/
+    22	@layer base {
+    23	  *,
+    24	  ::after,
+    25	  ::before,
+    26	  ::backdrop,
+    27	  ::file-selector-button {
+    28	    border-color: var(--color-gray-200, currentColor);
+    29	  }
+    30	}
+    31	
+    32	@utility flex-c {
+    33	  @apply flex justify-center items-center;
+    34	}
+    35	
+    36	@utility flex-ac {
+    37	  @apply flex justify-around items-center;
+    38	}
+    39	
+    40	@utility flex-bc {
+    41	  @apply flex justify-between items-center;
+    42	}
+    43	
+    44	@utility navbar-bg-hover {
+    45	  @apply select-none dark:text-white dark:hover:bg-[#242424]!;
+    46	}
+    47	
+    48	@utility animate-scale-bounce {
+    49	  animation: pure-scale-bounce 0.3s ease-in-out;
+    50	}
+```
+
+Key Tailwind CSS integration points:
+
+- **Line 5**: `@custom-variant dark (&:is(.dark *))` — this is Tailwind CSS v4 syntax that makes the `dark:` prefix respond to the `.dark` class on any ancestor. So `dark:text-white` activates when `<html>` has the `dark` class.
+
+- **Lines 7-12**: The `@theme` block bridges Element Plus and Tailwind by mapping EP's CSS variables to Tailwind color tokens:
+  - `bg_color` → `var(--el-bg-color)` — so `bg-bg_color` in Tailwind uses EP's background
+  - `primary` → `var(--el-color-primary)` — so `text-primary` uses the EP accent color
+  - `text_color_primary` / `text_color_regular` — same bridge for text colors
+
+  This means when the EP theme color changes (via the theme system), Tailwind utilities using these tokens update automatically.
+
+- **Lines 44-46**: The `navbar-bg-hover` custom utility shows the dark variant in action: `dark:text-white dark:hover:bg-[#242424]!`
+
+### 17d. The Settings Panel — User-Facing Controls
+
+The settings drawer (`src/layout/components/lay-setting/index.vue`) is where users interact with all three dimensions. Let's look at the key parts of the template:
+
+```bash
+sed -n "320,355p" src/layout/components/lay-setting/index.vue
+```
+
+```output
+      <p :class="pClass">{{ t("panel.pureThemeMode") }}</p>
+      <Segmented
+        resize
+        class="select-none"
+        :modelValue="themeMode === 'system' ? 2 : dataTheme ? 1 : 0"
+        :options="themeOptions"
+        @change="
+          theme => {
+            theme.index === 1 && theme.index !== 2
+              ? (dataTheme = true)
+              : (dataTheme = false);
+            themeMode = theme.option.theme;
+            dataThemeChange(theme.option.theme);
+            theme.index === 2 && watchSystemThemeChange();
+          }
+        "
+      />
+
+      <p :class="['mt-5!', pClass]">{{ t("panel.pureThemeColor") }}</p>
+      <ul class="theme-color">
+        <li
+          v-for="(item, index) in themeColors"
+          v-show="showThemeColors(item.themeColor)"
+          :key="index"
+          :style="getThemeColorStyle(item.color)"
+          @click="setLayoutThemeColor(item.themeColor)"
+        >
+          <el-icon
+            class="mt-px"
+            :size="20"
+            :color="getThemeColor(item.themeColor)"
+          >
+            <IconifyIconOffline :icon="Check" />
+          </el-icon>
+        </li>
+      </ul>
+```
+
+The settings panel template shows the two main controls:
+
+**Theme Mode Segmented Control** (light / dark / system):
+- Uses a `<Segmented>` component with three options
+- Index 0 = light (`dataTheme = false`), index 1 = dark (`dataTheme = true`), index 2 = system
+- Calls `dataThemeChange()` which toggles `html.dark` and adjusts the sidebar theme
+- In "system" mode, calls `watchSystemThemeChange()` which sets up a `matchMedia` listener
+
+**Theme Color Palette** (the 8 color swatches):
+- Renders a `<li>` for each of the 8 themes from `themeColors` array
+- `v-show="showThemeColors(item.themeColor)"` hides the "light" swatch when dark mode is active (because a white sidebar in dark mode would look broken)
+- Clicking calls `setLayoutThemeColor(item.themeColor)` which sets the `data-theme` attribute and cascades the EP color changes
+- The active theme shows a checkmark icon (Check)
+
+### 17e. System Theme Following (prefers-color-scheme)
+
+The "system" mode uses the browser's `matchMedia` API:
+
+```bash
+sed -n "277,299p" src/layout/components/lay-setting/index.vue
+```
+
+```output
+const mediaQueryList = window.matchMedia("(prefers-color-scheme: dark)");
+
+/** 根据操作系统主题设置平台主题模式 */
+function updateTheme() {
+  if (themeMode.value !== "system") return;
+  if (mediaQueryList.matches) {
+    dataTheme.value = true;
+  } else {
+    dataTheme.value = false;
+  }
+  dataThemeChange(themeMode.value);
+}
+
+function removeMatchMedia() {
+  mediaQueryList.removeEventListener("change", updateTheme);
+}
+
+/** 监听操作系统主题改变 */
+function watchSystemThemeChange() {
+  updateTheme();
+  removeMatchMedia();
+  mediaQueryList.addEventListener("change", updateTheme);
+}
+```
+
+When the user selects "system" mode:
+1. `watchSystemThemeChange()` runs `updateTheme()` immediately (to sync with current OS setting)
+2. Removes any previous listener (to prevent duplicates), then adds a new `"change"` event listener on the `matchMedia` query
+3. Whenever the OS toggles between light/dark, `updateTheme()` fires: it sets `dataTheme` to match the OS preference and calls `dataThemeChange()`
+4. On component unmount, the listener is cleaned up
+
+### 17f. Auxiliary Display Modes — Grey and Weakness
+
+Two additional visual filters are available:
+
+```bash
+sed -n "29,37p" src/style/index.scss
+```
+
+```output
+/* 灰色模式 */
+.html-grey {
+  filter: grayscale(100%);
+}
+
+/* 色弱模式 */
+.html-weakness {
+  filter: invert(80%);
+}
+```
+
+- **Grey mode** (`.html-grey`): Applies `filter: grayscale(100%)` to the entire page. Commonly used in China for memorial occasions (national mourning days).
+- **Weakness mode** (`.html-weakness`): Applies `filter: invert(80%)` for color-blind accessibility.
+
+Both are toggled via `toggleClass()` on the `<html>` element and persisted to `$storage.configure`.
+
+### 17g. Complete Data Flow Summary
+
+Here's the full chain when a user clicks a purple theme swatch in the settings panel:
+
+```
+User clicks saucePurple swatch
+  ↓
+setLayoutThemeColor("saucePurple", true)
+  ├─ layoutTheme.value.theme = "saucePurple"
+  ├─ document.documentElement.setAttribute("data-theme", "saucePurple")
+  │    └─ CSS: html[data-theme="saucePurple"] { --pure-theme-menu-bg: #130824; ... }
+  │         └─ sidebar.scss: .sidebar-container { background: var(--pure-theme-menu-bg) }
+  │              └─ Sidebar turns deep purple instantly
+  ├─ $storage.layout = { theme: "saucePurple", themeColor: "saucePurple", ... }
+  │    └─ responsive-storage writes to localStorage
+  │         └─ Survives page refresh
+  └─ setEpThemeColor("#722ed1")     ← saucePurple's color from themeColors array
+       ├─ epThemeStore.setEpThemeColor("#722ed1")  → Pinia + localStorage
+       ├─ --el-color-primary = #722ed1              → All EP buttons/links turn purple
+       ├─ --el-color-primary-dark-{1,2} = darken(#722ed1, 10%/20%)
+       └─ --el-color-primary-light-{1..9} = lighten(#722ed1, 10%..90%)
+            └─ EP hover states, backgrounds, borders all adjust
+```
+
+And when the user subsequently toggles dark mode ON:
+
+```
+dataThemeChange("dark")
+  ├─ themeMode = "dark"
+  ├─ epTheme is "saucePurple" (not "light") → setLayoutThemeColor("saucePurple", false)
+  │    └─ Sidebar stays purple (isClick=false preserves themeColor)
+  ├─ document.documentElement.classList.add("dark")
+  │    ├─ Element Plus dark variables activate (via imported css-vars.scss)
+  │    ├─ dark.scss: html.dark { .navbar, .sidebar-container { background: var(--el-bg-color) } }
+  │    │    └─ But data-theme still overrides sidebar via !important
+  │    ├─ dark.scss: --vxe-table-* variables → VxeTable goes dark
+  │    └─ Tailwind dark: variant activates → dark:text-white, dark:bg-[#242424], etc.
+  └─ setEpThemeColor regenerates shades with darken() instead of lighten()
+       └─ Purple shades now darken correctly against dark backgrounds
+```
+
+The key design insight: the three dimensions are **orthogonal**. You can combine any sidebar color scheme with any EP primary color in either light or dark mode. The CSS variable architecture ensures they compose without conflicts.
